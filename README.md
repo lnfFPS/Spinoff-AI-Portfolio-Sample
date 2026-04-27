@@ -29,6 +29,8 @@ The idea works, but it also exposed some issues. Some actions are too connected 
 
 ## Notes
 
+Created on 3/26/2026
+
 This is a working prototype, not a perfect final framework.
 
 The main thing I like about it is that creating new AIs is mostly data-driven. I can make melee, gun, or more complex enemies without rewriting the entire AI system each time.
