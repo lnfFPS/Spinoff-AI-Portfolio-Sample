@@ -1,2 +1,2 @@
 # Spinoff-AI-Portfolio-Sample
-Made for ARCSoft code analysation
+Made for ARCSoft code analysation I assume anyway
