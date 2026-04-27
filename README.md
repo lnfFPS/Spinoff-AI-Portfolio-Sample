@@ -29,7 +29,7 @@ The idea works, but it also exposed some issues. Some actions are too connected 
 
 ## Notes
 
-Created on 3/26/2026
+Project Created on 3/26/2026
 
 This is a working prototype, not a perfect final framework.
 
