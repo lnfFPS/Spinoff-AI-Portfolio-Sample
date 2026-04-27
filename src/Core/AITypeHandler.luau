@@ -37,7 +37,7 @@ export type AIData = {
 	HeavyDamage: number,
 	AttackRange: number,
 
-	TargetTags: {string?}, -- what enemies will specifically target even if they are an AI or a possible Ally
+	TargetTags: {string?}, -- what enemies will specifically target even if they are an AI or a possible Ally but currently isn't implemented
 
 	SwingHitbox: {
 		Size: Vector3,
@@ -112,7 +112,7 @@ export type AIData = {
 	},
 
 	OnDeath: {
-		CustomStats: {}, -- can be really made of anything bro
+		CustomStats: {}, -- could be used in junction with the func as the data is saved (not in the source of course)
 
 		func: (character :Model, damage :number, customStats:{}) -> boolean,
 	}
@@ -122,7 +122,7 @@ export type AIData = {
 local AITypeHandler = {}
 AITypeHandler.__index = AITypeHandler
 
-function AITypeHandler.new(model: Model, data :AIData, callbacks)
+function AITypeHandler.new(model: Model, data: AIData, callbacks)
 	local self = setmetatable({}, AITypeHandler)
 
 	self.Model = model
@@ -130,13 +130,8 @@ function AITypeHandler.new(model: Model, data :AIData, callbacks)
 	self.Humanoid = model:FindFirstChildOfClass("Humanoid")
 	self.Animator = self.Humanoid:WaitForChild("Animator")
 	self.Data = data
-self.Callbacks = callbacks or {}
-
-self.SSM = SSM:RegisterCharacter(model, {
-	StunImmune = data.StunImmune == true,
-	RecoveryTime = data.RecoveryTime,
-	WalkSpeed = data.WalkSpeed,
-})
+	self.Callbacks = callbacks or {}
+	self.SSM = nil -- Assigned later by AIUnit
 
 	self.TypeName = string.lower(data.Type or "melee")
 	self.TypeModule = TypeModules[self.TypeName]
@@ -157,15 +152,14 @@ self.SSM = SSM:RegisterCharacter(model, {
 	self.LastSyncedTarget = nil
 
 	self.Tracks = {}
-	self.SoundData = table.clone(data.Sounds or {})
-	self.FSM = nil
-	self.SSM = nil
+    self.SoundData = table.clone(data.Sounds or {})
+    self.FSM = nil
 
 	self.OnDeathFunc = nil
 	self.CustomStats = nil
-	self.MechanicalStats = {} -- put whatever in here bro I like striking lightning at people btw i'm cooler
+	self.MechanicalStats = {} -- stores runtime-only mechanic values such as ammo count, active facing connection, or temporary flags
 
-	if data.OnDeath then
+	if data.OnDeath then -- possible death-denial 
 		self.OnDeathFunc = data.OnDeath.func
 		self.CustomStats = table.clone(data.OnDeath.CustomStats or {})
 	end
@@ -178,6 +172,7 @@ self.SSM = SSM:RegisterCharacter(model, {
 		return track
 	end
 
+	-- animation loading
 	for name, value in pairs(data.Animations or {}) do
 		if name == "LightSwings" then
 			for i, swingData in ipairs(value) do
@@ -534,6 +529,7 @@ function AITypeHandler:GetFlatDirection(fromPos: Vector3, toPos: Vector3): Vecto
 end
 
 
+-- cancels the wait when the AI Dies or gets stunned based on the second arg
 function AITypeHandler:SafeWait(waitTime: number,   ignoreStun :boolean): boolean
 	local startTime = os.clock()
 
@@ -552,6 +548,8 @@ function AITypeHandler:SafeWait(waitTime: number,   ignoreStun :boolean): boolea
 	return true
 end
 
+
+-- Only used for Melee Type
 function AITypeHandler:WaitForHit(track: AnimationTrack, hitTime: number?): boolean
 	if hitTime then
 		task.wait(hitTime)
@@ -608,7 +606,7 @@ function AITypeHandler:WaitForHit(track: AnimationTrack, hitTime: number?): bool
 end
 
 
--- if updatetick is false then doesn't update it duhh
+-- makes a tick in the table reference as putting it inside of the states (in the Types: gun melee universal) wouldn't work because it would set the variable each time
 function AITypeHandler:MakeTick(name :string, updateTick :boolean)
 	if self.CustomTicks[name] then
 		if updateTick then
@@ -622,6 +620,8 @@ function AITypeHandler:MakeTick(name :string, updateTick :boolean)
 	return self.CustomTicks[name]
 end
 
+
+-- Mainly used for Melee
 function AITypeHandler:ResolveHit(damage: number, isHeavy: boolean)
 
 	local hits = Combat.resolveHitbox(self.Model, self.Root, self.Data.SwingHitbox)
@@ -652,6 +652,7 @@ function AITypeHandler:ResolveHit(damage: number, isHeavy: boolean)
 
 end
 
+-- mainly used for gun
 function AITypeHandler:BulletSpread(origin: Vector3, goal: Vector3, spread: number): Vector3
 	self.RandomObject = self.RandomObject or Random.new()
 
@@ -670,7 +671,8 @@ function AITypeHandler:BulletSpread(origin: Vector3, goal: Vector3, spread: numb
 
 	return spreadCFrame.LookVector
 end
--- currently used in melee AI framework
+
+
 function AITypeHandler:TryAttack(ignoreBusy :boolean): boolean
 	if not self.TypeModule.TryAttack then
 		return false
@@ -711,8 +713,7 @@ function AITypeHandler:OnDie(damage: number)
 	
 	SSM:SetState(self.Model, "Dead")
 
-	-- wrapping a function so it doesn't delay or soetmhing though i could just like wrap that task.wait in
-	-- a task.delay i like this method more i guess it might be a bit more expensive but it just feels cleaner to me ngl
+	-- wrapping a function so it doesn't delay what's coming after the function
 	task.spawn(function()
 	    
 	    self.Tracks.Idle:Stop(0)
@@ -732,7 +733,7 @@ function AITypeHandler:OnDie(damage: number)
 	    end
     
 	    self:StopAll(0, true)
-	    self.Tracks.Death:Play(0, 100) -- had to play it directly because it was doing smth weird
+	    self.Tracks.Death:Play(0, 100) -- Plays directly to avoid conflicts with animation helper logic
 	    
 
 	    task.wait(self.Tracks.Death.Length * .985)
@@ -753,9 +754,6 @@ function AITypeHandler:OnDie(damage: number)
 	
 	return true
 end
-
--- Type Helper Tools:
--- by types i mean like Gun, Melee AI types
 
 
 function  AITypeHandler:FaceTarget(targetPart: BasePart)
@@ -801,17 +799,17 @@ function  AITypeHandler:FaceTarget(targetPart: BasePart)
             alignOrientation.Enabled = true
 	    end
 
-		-- checks the left side of the HRP and see if there is a wall blocking the way i guess
-		local ray1 = workspace:Raycast(rootPart.Position + rootPart.CFrame.RightVector * -1, rootPart.CFrame.LookVector * 2, ignorePlayersParams)
-		-- checks the right side of the HRP
-		local ray2 = workspace:Raycast(rootPart.Position + rootPart.CFrame.RightVector * 1, rootPart.CFrame.LookVector * 2, ignorePlayersParams)
-		if ray1 then -- when stuck on a wall it will try to set them slightly into the right position so people just dont softlock them lol olol ol
-			self.Model:PivotTo(rootPart.CFrame * CFrame.new(0.01, 0, 0))
-		elseif ray2 then
-			self.Model:PivotTo(rootPart.CFrame * CFrame.new(-0.01, 0, 0))
-		end
-
-
+        -- Side ray checks help prevent the AI from getting pinned against walls while facing a target.
+        local ray1 = workspace:Raycast(rootPart.Position + rootPart.CFrame.RightVector * -1, rootPart.CFrame.LookVector * 2, ignorePlayersParams)
+        local ray2 = workspace:Raycast(rootPart.Position + rootPart.CFrame.RightVector * 1, rootPart.CFrame.LookVector * 2, ignorePlayersParams)
+        
+        if ray1 then
+        	self.Model:PivotTo(rootPart.CFrame * CFrame.new(0.01, 0, 0))
+        elseif ray2 then
+        	self.Model:PivotTo(rootPart.CFrame * CFrame.new(-0.01, 0, 0))
+        end
+        
+        
 		local rootPosition = rootPart.Position
 		local targetPosition = targetPart.Position
 		local flatTarget = Vector3.new(targetPosition.X, rootPosition.Y, targetPosition.Z)

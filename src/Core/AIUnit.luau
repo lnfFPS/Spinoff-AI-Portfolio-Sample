@@ -1,6 +1,5 @@
 --!nocheck
 local Players = game:GetService("Players")
-local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 
@@ -47,7 +46,6 @@ function AIUnit.new(model: Model, actor: Actor, aiId: number)
 	self.Data = data
 
 	self.TargetResolver = nil
-	self.TargetTags = table.clone(data.TargetTags or {})
 	self.LastSentTarget = nil
 	self.LastMovementState = nil
 	self.LastMovementGoal = nil
@@ -99,15 +97,14 @@ function AIUnit.new(model: Model, actor: Actor, aiId: number)
 
 	AIRegistry:Register(model, self, self.Actions)
 
+	-- SSM stands for ServerStateMachine and is here because it allows the player to stun the AI (basically an init)
 	self.Actions.SSM = SSM:new(self.Model, {
-	StunImmune = self.Data.StunImmune,
-	RecoveryTime = self.Data.RecoveryTime,
-	WalkSpeed = self.Data.WalkSpeed,
+	    StunImmune = self.Data.StunImmune,
+	    RecoveryTime = self.Data.RecoveryTime,
+	    WalkSpeed = self.Data.WalkSpeed,
     })
 
 	self.Actor:SendMessage("New", self.AIId, model, self.Data.DetectionRange)
-
-	self:SetTargetTags(self.Data.TargetTags)
 
 	self.Actions:Start()
 
@@ -118,33 +115,6 @@ function AIUnit:SetTargetResolver(resolver)
 	self.TargetResolver = resolver
 end
 
-function AIUnit:SetTargetTags(tags: { string })
-
-	for id, tag in pairs(tags) do
-		if tag:IsA("Instance") then
-			
-		    local newStringTable :{string} = {}
-			for i, possibleInstance in pairs(tag:GetChildren()) do
-				if possibleInstance then
-					table.insert(newStringTable, possibleInstance.Name)
-				end
-			end
-
-		    for i, newString in pairs(newStringTable) do
-				if newString then
-					table.insert(tags, newString)
-				end
-			end
-
-
-			table.remove(tags, id)
-	    end
-	end
-	
-	self.TargetTags = table.clone(tags or {})
-end
-
--- you would want to always ignore target tags if you are interacting from the outside i guess cuz its not supported and idc bozo and ill support it l8er
 function AIUnit:GetDefaultTarget(customModel, detectionRange :number, ignoreTargetTags :boolean): BasePart?
 	local best = nil
 	local bestDistance = detectionRange or self.Data.DetectionRange
@@ -168,27 +138,6 @@ function AIUnit:GetDefaultTarget(customModel, detectionRange :number, ignoreTarg
 		end
 	end
 	
-	if ignoreTargetTags then
-		return best
-	end
-
-	for _, tag in ipairs(self.TargetTags) do
-		for _, instance in ipairs(CollectionService:GetTagged(tag)) do
-			local model = instance:IsA("Model") and instance or instance:FindFirstAncestorOfClass("Model")
-			if model and model ~= owner and not seen[model] then
-				seen[model] = true
-
-				local root, humanoid = GetRootAndHumanoid(model)
-				if root and humanoid and humanoid.Health > 0 then
-					local distance = (root.Position - self.Root.Position).Magnitude
-					if distance < bestDistance then
-						bestDistance = distance
-						best = root
-					end
-				end
-			end
-		end
-	end
 
 	return best
 end
@@ -258,15 +207,6 @@ function AIUnit:DestroyPathBrain()
 	self.LastMovementGoal = nil
 	self.Destroyed = true
 	self.Actor:SendMessage("Destroy", self.AIId)
-end
-
-function AIUnit:TurnTowards(targetPos: Vector3)
-	local direction = Vector3.new(targetPos.X, self.Root.Position.Y, targetPos.Z) - self.Root.Position
-	if direction.Magnitude < 0.1 then
-		return
-	end
-
-	-- self.Humanoid:MoveTo(direction.Unit)
 end
 
 function AIUnit:IsStunned(): boolean
