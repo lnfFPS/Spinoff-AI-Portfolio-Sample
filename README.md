@@ -37,4 +37,4 @@ The main thing I like about it is that creating new AIs is mostly data-driven. I
 
 The main thing I dislike is that `AITypeHandler` does too much. It works, but it became the connector for too many systems at once. If I continue this version, that is the first file I would refactor or rewrite.
 
-I am sending this as an early sample before exams; I'm available just less, after the exams I would like to send a stronger portfolio
+I am sending this as an early sample before exams; after the exams I would like to send a stronger portfolio
